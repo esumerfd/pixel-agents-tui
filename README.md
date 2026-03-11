@@ -22,7 +22,7 @@ Claude Code writes JSONL transcripts to `~/.claude/projects/`. Pixel Agents TUI 
 ## Install
 
 ```bash
-brew tap esumerfd/pixel-agents-tui
+brew tap esumerfd/pixel-agents-tui https://github.com/esumerfd/pixel-agents-tui
 brew install pixel-agents-tui
 ```
 
