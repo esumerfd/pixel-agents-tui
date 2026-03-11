@@ -19,10 +19,17 @@ Pixel Agents TUI watches your active Claude Code sessions and represents each ag
 
 Claude Code writes JSONL transcripts to `~/.claude/projects/`. Pixel Agents TUI polls these files, parses tool invocations, and maps agent states to character animations. No API access or configuration required — just run it alongside your Claude Code sessions.
 
+## Install
+
+```bash
+brew tap esumerfd/pixel-agents-tui
+brew install pixel-agents-tui
+```
+
 ## Usage
 
 ```bash
-cargo run
+pixel-agents-tui
 ```
 
 ### Controls
