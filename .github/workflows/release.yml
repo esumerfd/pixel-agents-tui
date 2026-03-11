@@ -41,6 +41,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          generate_release_notes: true
+
   build:
     name: Build (${{ matrix.target }})
     needs: prepare
@@ -88,11 +94,9 @@ jobs:
           echo "archive=$archive" >> "$GITHUB_OUTPUT"
 
       - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.prepare.outputs.tag }}
-          files: ${{ steps.package.outputs.archive }}
-          generate_release_notes: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ needs.prepare.outputs.tag }}" "${{ steps.package.outputs.archive }}" --clobber
 
   formula:
     name: Update Homebrew formula
