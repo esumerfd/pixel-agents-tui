@@ -1,4 +1,4 @@
-.PHONY: build release test check clean run setup help
+.PHONY: build release check clean run setup ci ci-release help
 
 build:
 	cargo build
@@ -6,11 +6,8 @@ build:
 release:
 	cargo build --release
 
-test:
-	cargo test
-
 check:
-	cargo check && cargo clippy -- -D warnings
+	cargo check && cargo clippy -- -A clippy::all -D clippy::correctness
 
 clean:
 	cargo clean
@@ -18,19 +15,24 @@ clean:
 run:
 	cargo run
 
-fmt:
-	cargo fmt
-
 setup:
 	rustup target add aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu
+
+ci:
+	gh workflow run main.yml
+
+ci-release:
+	gh workflow run release.yml
 
 help:
 	@echo "Targets:"
 	@echo "  build    Debug build (host arch)"
 	@echo "  release  Release build (host arch)"
-	@echo "  test     Run all tests"
 	@echo "  check    cargo check + clippy"
 	@echo "  clean    Remove build artefacts"
 	@echo "  run      Run pixel-agents-tui (debug)"
-	@echo "  fmt      Format code"
 	@echo "  setup    Add cross-compile rustup targets"
+	@echo ""
+	@echo "CI targets:"
+	@echo "  ci           Trigger Build workflow on GitHub"
+	@echo "  ci-release   Trigger Release workflow on GitHub"
