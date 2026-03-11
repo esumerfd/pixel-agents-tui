@@ -1,22 +1,36 @@
-.PHONY: build run clean check fmt clippy test
+.PHONY: build release test check clean run setup help
 
 build:
 	cargo build
 
-run: build
-	cargo run
+release:
+	cargo build --release
+
+test:
+	cargo test
+
+check:
+	cargo check && cargo clippy -- -D warnings
 
 clean:
 	cargo clean
 
-check:
-	cargo check
+run:
+	cargo run
 
 fmt:
 	cargo fmt
 
-clippy:
-	cargo clippy
+setup:
+	rustup target add aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu
 
-test:
-	cargo test
+help:
+	@echo "Targets:"
+	@echo "  build    Debug build (host arch)"
+	@echo "  release  Release build (host arch)"
+	@echo "  test     Run all tests"
+	@echo "  check    cargo check + clippy"
+	@echo "  clean    Remove build artefacts"
+	@echo "  run      Run pixel-agents-tui (debug)"
+	@echo "  fmt      Format code"
+	@echo "  setup    Add cross-compile rustup targets"
