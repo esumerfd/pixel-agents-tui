@@ -71,12 +71,24 @@ pub fn find_path(
     Vec::new() // no path found
 }
 
-/// Get all walkable tiles in the layout.
+/// Get all walkable tiles in the layout, excluding positions near edges
+/// where a character sprite would be clipped.
+/// A 5x5 sprite with row_offset=2 occupies rows [row-2, row+2] and cols [col-2, col+2].
 pub fn get_walkable_tiles(layout: &OfficeLayout) -> Vec<(u16, u16)> {
+    let sprite_margin_top: u16 = 2;
+    let sprite_margin_bottom: u16 = 2;
+    let sprite_margin_left: u16 = 2;
+    let sprite_margin_right: u16 = 2;
+
     let mut tiles = Vec::new();
     for row in 0..layout.rows {
         for col in 0..layout.cols {
-            if layout.is_walkable(col, row) {
+            if layout.is_walkable(col, row)
+                && row >= sprite_margin_top
+                && row + sprite_margin_bottom < layout.rows
+                && col >= sprite_margin_left
+                && col + sprite_margin_right < layout.cols
+            {
                 tiles.push((col, row));
             }
         }

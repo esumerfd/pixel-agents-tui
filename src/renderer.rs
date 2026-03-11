@@ -206,12 +206,16 @@ fn render_activity_panel(
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    // Build ordered list: parents first (sorted by id), then their subagents nested
+    // Build ordered list: parents sorted by folder name, then their subagents nested
     let mut parent_ids: Vec<u32> = agents.iter()
         .filter(|(_, a)| !a.is_subagent)
         .map(|(id, _)| *id)
         .collect();
-    parent_ids.sort();
+    parent_ids.sort_by(|a, b| {
+        let name_a = agents.get(a).and_then(|ag| ag.folder_name.as_deref()).unwrap_or("");
+        let name_b = agents.get(b).and_then(|ag| ag.folder_name.as_deref()).unwrap_or("");
+        name_a.to_lowercase().cmp(&name_b.to_lowercase())
+    });
 
     let mut ordered: Vec<u32> = Vec::new();
     for pid in &parent_ids {
