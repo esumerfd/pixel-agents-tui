@@ -31,9 +31,11 @@ pub fn render_help(frame: &mut Frame) {
     let _white = Style::default().fg(Color::Rgb(200, 200, 220));
     let heading = Style::default().fg(Color::Rgb(140, 180, 255)).add_modifier(Modifier::BOLD);
 
-    // Sprite preview colors
+    // Sprite preview colors — agent and subagent share shirt, differ in skin/hair
     let skin = Color::Rgb(255, 213, 170);
     let hair = Color::Rgb(80, 50, 30);
+    let sub_skin = Color::Rgb(195, 150, 100);
+    let sub_hair = Color::Rgb(40, 25, 15);
     let shirt = Color::Rgb(70, 130, 200);
     let pants = Color::Rgb(50, 50, 80);
     let eyes = Color::Rgb(40, 40, 40);
@@ -50,7 +52,7 @@ pub fn render_help(frame: &mut Frame) {
         ]),
         Line::from(vec![
             Span::styled("    Reading at desk   ", label),
-            Span::styled("Holding a book, eyes blink", dim),
+            Span::styled("Holding a book while reviewing code", dim),
         ]),
         Line::from(vec![
             Span::styled("    Standing idle     ", label),
@@ -59,6 +61,10 @@ pub fn render_help(frame: &mut Frame) {
         Line::from(vec![
             Span::styled("    Walking           ", label),
             Span::styled("Legs animate, pathfinds through doors", dim),
+        ]),
+        Line::from(vec![
+            Span::styled("    Sitting on couch  ", label),
+            Span::styled("Resting in the lounge when idle", dim),
         ]),
         Line::from(""),
         Line::from(Span::styled("  Agent Types", heading)),
@@ -104,17 +110,17 @@ pub fn render_help(frame: &mut Frame) {
         // Subagent preview row 1 (hair)
         Line::from(vec![
             Span::styled("     ", dim),
-            Span::styled("\u{2584}", s(hair)),
+            Span::styled("\u{2584}", s(sub_hair)),
             Span::styled("   Subagent (3\u{00D7}4)  ", label),
             Span::styled("Team/spawned agent (smaller)", dim),
         ]),
         // Subagent preview row 2 (face)
         Line::from(vec![
             Span::styled("     ", dim),
-            Span::styled("\u{25CF}", sb(eyes, skin)),
+            Span::styled("\u{25CF}", sb(eyes, sub_skin)),
             Span::styled("   ", dim),
             Span::styled("                  ", label),
-            Span::styled("Same shirt color as parent agent", dim),
+            Span::styled("Same shirt, different person", dim),
         ]),
         // Subagent preview row 3 (shirt)
         Line::from(vec![

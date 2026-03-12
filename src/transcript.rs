@@ -60,6 +60,38 @@ pub fn format_tool_status(tool_name: &str, input: &serde_json::Value) -> String 
     }
 }
 
+/// Convert an active tool status to past tense for display after completion.
+pub fn to_past_tense(status: &str) -> String {
+    // Handle "Verb rest..." patterns
+    let replacements = &[
+        ("Reading ", "Read "),
+        ("Editing ", "Edited "),
+        ("Writing ", "Wrote "),
+        ("Running: ", "Ran: "),
+        ("Running subtask", "Ran subtask"),
+        ("Searching files", "Searched files"),
+        ("Searching code", "Searched code"),
+        ("Fetching web content", "Fetched web content"),
+        ("Searching the web", "Searched the web"),
+        ("Planning", "Planned"),
+        ("Editing notebook", "Edited notebook"),
+        ("Waiting for your answer", "Answered"),
+    ];
+    for (prefix, replacement) in replacements {
+        if let Some(rest) = status.strip_prefix(prefix) {
+            return format!("{}{}", replacement, rest);
+        }
+        if *prefix == status {
+            return replacement.to_string();
+        }
+    }
+    // "Using X" → "Used X", "Subtask: ..." stays as-is
+    if let Some(rest) = status.strip_prefix("Using ") {
+        return format!("Used {}", rest);
+    }
+    status.to_string()
+}
+
 /// Returns true if this tool triggers a reading animation rather than typing.
 pub fn is_reading_tool(tool_name: &str) -> bool {
     matches!(tool_name, "Read" | "Grep" | "Glob" | "WebFetch" | "WebSearch")
@@ -150,6 +182,11 @@ pub fn process_transcript_line(line: &str, agent: &mut AgentState) -> Vec<AgentE
                             if block.get("type").and_then(|t| t.as_str()) == Some("tool_result") {
                                 if let Some(tool_use_id) = block.get("tool_use_id").and_then(|v| v.as_str()) {
                                     let tool_id = tool_use_id.to_string();
+                                    // Preserve the last tool's status in past tense
+                                    if let Some(status) = agent.active_tool_statuses.get(&tool_id) {
+                                        agent.last_status_text = to_past_tense(status);
+                                        agent.last_status_time = std::time::Instant::now();
+                                    }
                                     agent.active_tool_ids.remove(&tool_id);
                                     agent.active_tool_statuses.remove(&tool_id);
                                     agent.active_tool_names.remove(&tool_id);

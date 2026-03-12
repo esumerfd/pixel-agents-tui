@@ -13,6 +13,7 @@ pub struct Scene {
     walkable_tiles: Vec<(u16, u16)>,
     lounge_seat_occupied: Vec<bool>,
     next_palette: u8,
+    next_person: u8,
     next_seat: usize,
 }
 
@@ -26,6 +27,7 @@ impl Scene {
             walkable_tiles,
             lounge_seat_occupied: vec![false; lounge_seat_count],
             next_palette: 0,
+            next_person: 0,
             next_seat: 0,
         }
     }
@@ -75,6 +77,10 @@ impl Scene {
         let is_subagent = agent.map_or(false, |a| a.is_subagent);
         let parent_id = agent.and_then(|a| a.parent_id);
 
+        // Each character gets a unique person (skin/hair), team shares palette (shirt)
+        let person = self.next_person;
+        self.next_person = (self.next_person + 1) % 8;
+
         if is_subagent {
             let (palette, seat_col, seat_row, desk_col, desk_row) = if let Some(pid) = parent_id {
                 if let Some(parent_ch) = self.characters.get(&pid) {
@@ -93,7 +99,7 @@ impl Scene {
                 (self.next_palette, sc, sr, dc, dr)
             };
 
-            let mut ch = Character::new(agent_id, seat_col, seat_row, palette);
+            let mut ch = Character::new(agent_id, seat_col, seat_row, palette, person);
             ch.desk_col = desk_col;
             ch.desk_row = desk_row;
             ch.is_subagent = true;
@@ -105,7 +111,7 @@ impl Scene {
             let (seat_col, seat_row, desk_col, desk_row) = self.assign_seat()
                 .unwrap_or((5, 5, 5, 2));
 
-            let mut ch = Character::new(agent_id, seat_col, seat_row, palette);
+            let mut ch = Character::new(agent_id, seat_col, seat_row, palette, person);
             ch.desk_col = desk_col;
             ch.desk_row = desk_row;
             self.characters.insert(agent_id, ch);

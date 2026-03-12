@@ -231,28 +231,29 @@ pub fn build_office(agent_count: usize) -> OfficeLayout {
         }
     }
 
-    // ── Lounge seats (walkable spots near couches) ──
+    // ── Lounge seats (ON the couches — col offset +2 and +5 center two seats per couch) ──
     let lounge_seats = vec![
-        // Near couch row 1 (row 23)
-        LoungeSeat { col: 14, row: 24 },
-        LoungeSeat { col: 16, row: 24 },
-        LoungeSeat { col: 38, row: 24 },
-        LoungeSeat { col: 40, row: 24 },
-        LoungeSeat { col: 64, row: 24 },
-        LoungeSeat { col: 66, row: 24 },
-        // Near couch row 2 (row 28)
-        LoungeSeat { col: 14, row: 29 },
-        LoungeSeat { col: 16, row: 29 },
-        // Near couch row 3 (row 33)
-        LoungeSeat { col: 14, row: 34 },
-        LoungeSeat { col: 16, row: 34 },
-        // Scattered seats in the lounge
-        LoungeSeat { col: 30, row: 30 },
-        LoungeSeat { col: 50, row: 30 },
-        LoungeSeat { col: 70, row: 30 },
-        LoungeSeat { col: 30, row: 34 },
-        LoungeSeat { col: 60, row: 34 },
+        // Couch at (4, 23)
+        LoungeSeat { col: 6, row: 24 },
+        LoungeSeat { col: 9, row: 24 },
+        // Couch at (30, 23)
+        LoungeSeat { col: 32, row: 24 },
+        LoungeSeat { col: 35, row: 24 },
+        // Couch at (56, 23)
+        LoungeSeat { col: 58, row: 24 },
+        LoungeSeat { col: 61, row: 24 },
+        // Couch at (4, 28)
+        LoungeSeat { col: 6, row: 29 },
+        LoungeSeat { col: 9, row: 29 },
+        // Couch at (4, 33)
+        LoungeSeat { col: 6, row: 34 },
+        LoungeSeat { col: 9, row: 34 },
     ];
+
+    // Unblock lounge seat positions so pathfinding can reach them
+    for ls in &lounge_seats {
+        blocked.remove(&(ls.col, ls.row));
+    }
 
     // ── Room labels ──
     let room_labels = vec![

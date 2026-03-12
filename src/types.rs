@@ -89,27 +89,22 @@ impl AgentState {
     }
 
     pub fn current_status_text(&self) -> String {
+        // Priority 1: actively running tool — show its specific status
         if let Some(status) = self.active_tool_statuses.values().next() {
             return status.clone();
         }
-        let has_recent_text = !self.last_status_text.is_empty()
-            && self.last_status_time.elapsed().as_secs_f64() < 2.0;
 
         match self.status {
             AgentStatus::Active => {
-                if has_recent_text {
+                // Between tool calls: show last tool status if we have one,
+                // otherwise "Thinking..." (LLM is generating the next action)
+                if !self.last_status_text.is_empty() {
                     self.last_status_text.clone()
                 } else {
-                    "Working...".to_string()
+                    "Thinking...".to_string()
                 }
             }
-            AgentStatus::Idle => {
-                if has_recent_text {
-                    self.last_status_text.clone()
-                } else {
-                    "Idle".to_string()
-                }
-            }
+            AgentStatus::Idle => "Idle".to_string(),
             AgentStatus::WaitingPermission => "Waiting for permission".to_string(),
         }
     }
@@ -136,6 +131,7 @@ pub struct Character {
     pub desk_row: u16,
     pub seat_timer: f64,
     pub palette: u8,
+    pub person: u8,
     pub current_tool: Option<String>,
     pub status_text: String,
     pub is_subagent: bool,
@@ -143,7 +139,7 @@ pub struct Character {
 }
 
 impl Character {
-    pub fn new(id: u32, seat_col: u16, seat_row: u16, palette: u8) -> Self {
+    pub fn new(id: u32, seat_col: u16, seat_row: u16, palette: u8, person: u8) -> Self {
         Self {
             id,
             state: CharacterState::Idle,
@@ -164,6 +160,7 @@ impl Character {
             desk_row: seat_row.saturating_sub(3),
             seat_timer: 0.0,
             palette,
+            person,
             current_tool: None,
             status_text: "Idle".to_string(),
             is_subagent: false,

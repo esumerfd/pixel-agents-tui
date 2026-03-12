@@ -3,28 +3,35 @@
 use crate::types::*;
 use ratatui::style::Color;
 
-/// Character palette colors (skin, hair, shirt, pants, shoes, eyes)
-const PALETTES: [(Color, Color, Color, Color, Color, Color); 6] = [
-    // Palette 0: light skin, blue shirt
-    (Color::Rgb(255, 213, 170), Color::Rgb(80, 50, 30), Color::Rgb(70, 130, 200), Color::Rgb(50, 50, 80), Color::Rgb(60, 40, 30), Color::Rgb(40, 40, 40)),
-    // Palette 1: dark brown skin, green shirt
-    (Color::Rgb(101, 67, 33), Color::Rgb(20, 15, 10), Color::Rgb(60, 160, 80), Color::Rgb(60, 60, 70), Color::Rgb(50, 35, 25), Color::Rgb(180, 160, 120)),
-    // Palette 2: light skin, red shirt
-    (Color::Rgb(255, 224, 189), Color::Rgb(180, 120, 60), Color::Rgb(200, 60, 60), Color::Rgb(40, 40, 60), Color::Rgb(70, 45, 35), Color::Rgb(40, 40, 40)),
-    // Palette 3: deep brown skin, purple shirt
-    (Color::Rgb(80, 50, 30), Color::Rgb(15, 10, 8), Color::Rgb(140, 70, 180), Color::Rgb(50, 45, 65), Color::Rgb(55, 38, 28), Color::Rgb(200, 180, 140)),
-    // Palette 4: medium brown skin, orange shirt
-    (Color::Rgb(160, 110, 70), Color::Rgb(30, 20, 15), Color::Rgb(220, 140, 50), Color::Rgb(55, 50, 70), Color::Rgb(65, 42, 32), Color::Rgb(160, 150, 120)),
-    // Palette 5: light skin, teal shirt
-    (Color::Rgb(225, 185, 145), Color::Rgb(60, 40, 25), Color::Rgb(50, 170, 170), Color::Rgb(45, 55, 75), Color::Rgb(58, 40, 30), Color::Rgb(40, 40, 40)),
+/// Appearance: (skin, hair) — unique per person
+const APPEARANCES: [(Color, Color); 8] = [
+    (Color::Rgb(255, 213, 170), Color::Rgb(80, 50, 30)),    // light/peach, brown hair
+    (Color::Rgb(101, 67, 33),   Color::Rgb(20, 15, 10)),    // dark brown, black hair
+    (Color::Rgb(255, 224, 189), Color::Rgb(180, 120, 60)),   // fair/rosy, auburn hair
+    (Color::Rgb(195, 150, 100), Color::Rgb(40, 25, 15)),    // medium/olive, dark hair
+    (Color::Rgb(130, 80, 45),   Color::Rgb(15, 10, 8)),     // deep brown, black hair
+    (Color::Rgb(225, 185, 145), Color::Rgb(60, 40, 25)),    // warm/tan, dark brown hair
+    (Color::Rgb(175, 125, 80),  Color::Rgb(50, 30, 18)),    // caramel, espresso hair
+    (Color::Rgb(240, 200, 160), Color::Rgb(140, 90, 40)),   // golden, chestnut hair
 ];
+
+/// Team colors: (shirt, pants, shoes) — shared by agent + subagents
+const TEAM_COLORS: [(Color, Color, Color); 6] = [
+    (Color::Rgb(70, 130, 200),  Color::Rgb(50, 50, 80),  Color::Rgb(60, 40, 30)),   // blue
+    (Color::Rgb(60, 160, 80),   Color::Rgb(60, 60, 70),  Color::Rgb(50, 35, 25)),   // green
+    (Color::Rgb(200, 60, 60),   Color::Rgb(40, 40, 60),  Color::Rgb(70, 45, 35)),   // red
+    (Color::Rgb(140, 70, 180),  Color::Rgb(50, 45, 65),  Color::Rgb(55, 38, 28)),   // purple
+    (Color::Rgb(220, 140, 50),  Color::Rgb(55, 50, 70),  Color::Rgb(65, 42, 32)),   // orange
+    (Color::Rgb(50, 170, 170),  Color::Rgb(45, 55, 75),  Color::Rgb(58, 40, 30)),   // teal
+];
+
+const EYES: Color = Color::Rgb(40, 40, 40);
 
 const T: Option<Color> = None; // transparent
 
 /// Get the shirt color for a palette index (used as agent identifier in status panels).
 pub fn palette_color(palette: u8) -> Color {
-    let p = &PALETTES[palette as usize % PALETTES.len()];
-    p.2
+    TEAM_COLORS[palette as usize % TEAM_COLORS.len()].0
 }
 
 /// A sprite row: each cell is (character, foreground, optional background).
@@ -40,15 +47,15 @@ pub struct SpriteCell {
 
 /// Get a 5x5 character sprite grid for the given character state.
 pub fn get_character_grid(ch: &Character) -> Vec<Vec<SpriteCell>> {
-    let p = &PALETTES[ch.palette as usize % PALETTES.len()];
-    let (skin, hair, shirt, pants, shoes, e) = *p;
+    let (skin, hair) = APPEARANCES[ch.person as usize % APPEARANCES.len()];
+    let (shirt, pants, shoes) = TEAM_COLORS[ch.palette as usize % TEAM_COLORS.len()];
 
     match ch.state {
-        CharacterState::Typing => typing_sprite(ch.frame, skin, hair, shirt, pants, e),
-        CharacterState::Reading => reading_sprite(ch.frame, skin, hair, shirt, pants, e),
-        CharacterState::Walking => walking_sprite(ch.frame, skin, hair, shirt, pants, shoes, e),
-        CharacterState::Idle => idle_sprite(skin, hair, shirt, pants, shoes, e),
-        CharacterState::Sitting => sitting_sprite(skin, hair, shirt, e, pants),
+        CharacterState::Typing => typing_sprite(ch.frame, skin, hair, shirt, pants, EYES),
+        CharacterState::Reading => reading_sprite(ch.frame, skin, hair, shirt, pants, EYES),
+        CharacterState::Walking => walking_sprite(ch.frame, skin, hair, shirt, pants, shoes, EYES),
+        CharacterState::Idle => idle_sprite(skin, hair, shirt, pants, shoes, EYES),
+        CharacterState::Sitting => sitting_sprite(skin, hair, shirt, EYES, pants),
     }
 }
 
@@ -78,14 +85,11 @@ fn typing_sprite(frame: u8, skin: Color, hair: Color, shirt: Color, pants: Color
     ]
 }
 
-fn reading_sprite(frame: u8, skin: Color, hair: Color, shirt: Color, pants: Color, eyes: Color) -> Vec<Vec<SpriteCell>> {
-    let f = frame % 2;
+fn reading_sprite(_frame: u8, skin: Color, hair: Color, shirt: Color, pants: Color, eyes: Color) -> Vec<Vec<SpriteCell>> {
     let book = Color::Rgb(200, 200, 220);
     vec![
         vec![ empty(),      c('\u{2584}', hair), c('\u{2584}', hair), c('\u{2584}', hair), empty()       ],
-        vec![ empty(),      if f==0 {cb('\u{25CB}', eyes, skin)} else {cb('\u{2022}', eyes, skin)},
-                            c('\u{2588}', skin),
-                            if f==0 {cb('\u{25CB}', eyes, skin)} else {cb('\u{2022}', eyes, skin)}, empty() ],
+        vec![ empty(),      cb('\u{25CF}', eyes, skin), c('\u{2588}', skin), cb('\u{25CF}', eyes, skin), empty() ],
         vec![ empty(),      c('\u{2588}', shirt), c('\u{2588}', shirt), c('\u{2588}', shirt), c('\u{2590}', book) ],
         vec![ empty(),      c('\u{2588}', pants), c('\u{2588}', pants), c('\u{2588}', pants), empty()       ],
         vec![ empty(),      c('\u{2584}', pants), empty(),              c('\u{2584}', pants), empty()       ],
@@ -138,8 +142,9 @@ pub const SUBAGENT_HEIGHT: u16 = 4;
 
 /// Get a 3x4 subagent sprite grid.
 pub fn get_subagent_grid(ch: &Character) -> Vec<Vec<SpriteCell>> {
-    let p = &PALETTES[ch.palette as usize % PALETTES.len()];
-    let (skin, hair, shirt, pants, shoes, e) = *p;
+    let (skin, hair) = APPEARANCES[ch.person as usize % APPEARANCES.len()];
+    let (shirt, pants, shoes) = TEAM_COLORS[ch.palette as usize % TEAM_COLORS.len()];
+    let e = EYES;
 
     match ch.state {
         CharacterState::Typing | CharacterState::Reading => {
