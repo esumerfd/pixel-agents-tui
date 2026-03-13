@@ -53,8 +53,10 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), 
     // Initial scan for agents (to get count for desk layout)
     let initial_events = watcher::scan_for_agents(&mut known_files, &mut agents, &mut next_id);
 
-    // Build office with desk count matching top-level agents
-    let top_level_count = agents.values().filter(|a| !a.is_subagent).count();
+    // Build office with desk count: top-level agents + named team members (they get their own desks)
+    let top_level_count = agents.values()
+        .filter(|a| !a.is_subagent || a.member_name.is_some())
+        .count();
     let office = layout::build_office(top_level_count);
     let mut scene = scene::Scene::new(office);
 

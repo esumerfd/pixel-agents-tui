@@ -76,12 +76,22 @@ impl Scene {
         let agent = agents.get(&agent_id);
         let is_subagent = agent.map_or(false, |a| a.is_subagent);
         let parent_id = agent.and_then(|a| a.parent_id);
+        let is_team_member = agent.map_or(false, |a| a.team_name.is_some());
 
-        // Each character gets a unique person (skin/hair), team shares palette (shirt)
+        // Each character gets a unique person (skin/hair)
         let person = self.next_person;
         self.next_person = (self.next_person + 1) % 8;
 
-        if is_subagent {
+        // Resolve palette: use team color if available, otherwise auto-assign
+        let resolve_palette = |agent: Option<&AgentState>, fallback: u8| -> u8 {
+            agent
+                .and_then(|a| a.team_color.as_deref())
+                .map(team_color_to_palette)
+                .unwrap_or(fallback)
+        };
+
+        if is_subagent && !is_team_member {
+            // Non-team subagent: spawn near parent
             let (palette, seat_col, seat_row, desk_col, desk_row) = if let Some(pid) = parent_id {
                 if let Some(parent_ch) = self.characters.get(&pid) {
                     let mut rng = rand::thread_rng();
@@ -105,8 +115,11 @@ impl Scene {
             ch.is_subagent = true;
             self.characters.insert(agent_id, ch);
         } else {
-            let palette = self.next_palette;
-            self.next_palette = (self.next_palette + 1) % 6;
+            // Team member (lead or non-lead) or standalone agent: each gets their own seat
+            let palette = resolve_palette(agent, self.next_palette);
+            if !is_team_member {
+                self.next_palette = (self.next_palette + 1) % 6;
+            }
 
             let (seat_col, seat_row, desk_col, desk_row) = self.assign_seat()
                 .unwrap_or((5, 5, 5, 2));
@@ -114,6 +127,7 @@ impl Scene {
             let mut ch = Character::new(agent_id, seat_col, seat_row, palette, person);
             ch.desk_col = desk_col;
             ch.desk_row = desk_row;
+            ch.is_subagent = is_subagent;
             self.characters.insert(agent_id, ch);
         }
     }
@@ -422,4 +436,20 @@ fn random_range(min: f64, max: f64) -> f64 {
 fn random_int(min: u32, max: u32) -> u32 {
     let mut rng = rand::thread_rng();
     rng.gen_range(min..=max)
+}
+
+/// Map team config color names to sprite palette indices.
+/// Palette indices: 0=blue, 1=green, 2=red, 3=purple, 4=orange, 5=teal
+fn team_color_to_palette(color: &str) -> u8 {
+    match color.to_lowercase().as_str() {
+        "blue" => 0,
+        "green" => 1,
+        "red" => 2,
+        "purple" => 3,
+        "orange" => 4,
+        "teal" | "cyan" => 5,
+        "yellow" => 4, // map to orange (closest)
+        "pink" => 2,   // map to red (closest)
+        _ => 0,
+    }
 }

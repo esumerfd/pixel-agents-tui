@@ -251,21 +251,29 @@ fn render_activity_panel(
         let max_name_len = (inner.width as usize).saturating_sub(12);
 
         let line = if agent.is_subagent {
-            let name: String = format!("\u{2514} subagent").chars().take(max_name_len).collect();
+            let display_name = agent.member_name.as_deref().unwrap_or("subagent");
+            let name: String = format!("\u{2514} {display_name}").chars().take(max_name_len).collect();
+            let name_color = if agent.member_name.is_some() {
+                Color::Rgb(140, 145, 170) // brighter for named team members
+            } else {
+                Color::Rgb(120, 125, 150)
+            };
             Line::from(vec![
                 Span::styled(format!("   {status_icon} "), Style::default().fg(status_color)),
                 Span::styled("\u{2588} ", Style::default().fg(palette_color)),
-                Span::styled(name, Style::default().fg(Color::Rgb(120, 125, 150))),
+                Span::styled(name, Style::default().fg(name_color)),
                 Span::styled(" \u{2192} ", Style::default().fg(Color::Rgb(80, 80, 120))),
                 Span::styled(status_text, Style::default().fg(status_color)),
             ])
         } else {
-            let folder = agent.folder_name.as_deref().unwrap_or("unknown");
-            let short_folder: String = folder.chars().take(max_name_len).collect();
+            let display_name = agent.member_name.as_deref()
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| agent.folder_name.as_deref().unwrap_or("unknown"));
+            let short_name: String = display_name.chars().take(max_name_len).collect();
             Line::from(vec![
                 Span::styled(format!(" {status_icon} "), Style::default().fg(status_color)),
                 Span::styled("\u{2588} ", Style::default().fg(palette_color)),
-                Span::styled(short_folder, Style::default().fg(Color::Rgb(160, 170, 200))),
+                Span::styled(short_name, Style::default().fg(Color::Rgb(160, 170, 200))),
                 Span::styled(" \u{2192} ", Style::default().fg(Color::Rgb(80, 80, 120))),
                 Span::styled(status_text, Style::default().fg(status_color)),
             ])

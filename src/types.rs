@@ -46,6 +46,10 @@ pub struct AgentState {
     pub is_subagent: bool,
     pub last_status_text: String,
     pub last_status_time: std::time::Instant,
+    /// Team metadata (populated when agent discovered via ~/.claude/teams/)
+    pub team_name: Option<String>,
+    pub member_name: Option<String>,
+    pub team_color: Option<String>,
 }
 
 impl AgentState {
@@ -68,6 +72,9 @@ impl AgentState {
             is_subagent: false,
             last_status_text: String::new(),
             last_status_time: std::time::Instant::now(),
+            team_name: None,
+            member_name: None,
+            team_color: None,
         }
     }
 
@@ -75,6 +82,28 @@ impl AgentState {
         let mut agent = Self::new(id, project_dir, jsonl_file, folder_name);
         agent.parent_id = Some(parent_id);
         agent.is_subagent = true;
+        agent
+    }
+
+    pub fn new_team_member(
+        id: u32,
+        project_dir: PathBuf,
+        jsonl_file: PathBuf,
+        folder_name: Option<String>,
+        team_name: String,
+        member_name: String,
+        team_color: Option<String>,
+        is_lead: bool,
+        parent_id: Option<u32>,
+    ) -> Self {
+        let mut agent = Self::new(id, project_dir, jsonl_file, folder_name);
+        agent.team_name = Some(team_name);
+        agent.member_name = Some(member_name);
+        agent.team_color = team_color;
+        if !is_lead {
+            agent.is_subagent = true;
+            agent.parent_id = parent_id;
+        }
         agent
     }
 
