@@ -46,6 +46,30 @@ impl Scene {
         Some((seat.col, seat.row, seat.desk_col, seat.desk_row))
     }
 
+    /// Assign the closest available seat to a given position (for subagents).
+    fn assign_seat_near(&mut self, near_col: u16, near_row: u16) -> Option<(u16, u16, u16, u16)> {
+        if self.layout.seats.is_empty() {
+            return None;
+        }
+        // Collect seats already occupied by characters
+        let occupied: std::collections::HashSet<(u16, u16)> = self.characters.values()
+            .map(|ch| (ch.seat_col, ch.seat_row))
+            .collect();
+        // Find closest unoccupied seat by Manhattan distance
+        let best = self.layout.seats.iter()
+            .filter(|s| !occupied.contains(&(s.col, s.row)))
+            .min_by_key(|s| {
+                (s.col as i32 - near_col as i32).unsigned_abs()
+                    + (s.row as i32 - near_row as i32).unsigned_abs()
+            });
+        if let Some(seat) = best {
+            Some((seat.col, seat.row, seat.desk_col, seat.desk_row))
+        } else {
+            // All seats taken — fall back to round-robin (shared seat)
+            self.assign_seat()
+        }
+    }
+
     /// Free a lounge seat if the character is occupying one.
     fn free_lounge_seat(&mut self, ch: &mut Character) {
         if let Some(idx) = ch.lounge_seat.take() {
@@ -119,15 +143,15 @@ impl Scene {
         };
 
         if is_subagent && !is_team_member {
-            // Non-team subagent: spawn near parent
+            // Non-team subagent: assign closest free desk seat to parent
             let (palette, seat_col, seat_row, desk_col, desk_row) = if let Some(pid) = parent_id {
                 if let Some(parent_ch) = self.characters.get(&pid) {
-                    let mut rng = rand::thread_rng();
-                    let offset_col: i16 = rng.gen_range(-3..=3);
-                    let offset_row: i16 = rng.gen_range(-2..=2);
-                    let sc = (parent_ch.seat_col as i16 + offset_col).max(1) as u16;
-                    let sr = (parent_ch.seat_row as i16 + offset_row).max(1) as u16;
-                    (parent_ch.palette, sc, sr, parent_ch.desk_col, parent_ch.desk_row)
+                    let pal = parent_ch.palette;
+                    let pcol = parent_ch.seat_col;
+                    let prow = parent_ch.seat_row;
+                    let (sc, sr, dc, dr) = self.assign_seat_near(pcol, prow)
+                        .unwrap_or((5, 5, 5, 2));
+                    (pal, sc, sr, dc, dr)
                 } else {
                     let (sc, sr, dc, dr) = self.assign_seat().unwrap_or((5, 5, 5, 2));
                     (self.next_palette, sc, sr, dc, dr)
