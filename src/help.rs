@@ -6,11 +6,11 @@ use ratatui::{
     Frame,
 };
 
-pub fn render_help(frame: &mut Frame) {
+pub fn render_help(frame: &mut Frame, scroll: u16) {
     let area = frame.area();
 
     let panel_w = 64u16.min(area.width.saturating_sub(4));
-    let panel_h = 36u16.min(area.height.saturating_sub(2));
+    let panel_h = 42u16.min(area.height.saturating_sub(2));
     let x = area.x + (area.width.saturating_sub(panel_w)) / 2;
     let y = area.y + (area.height.saturating_sub(panel_h)) / 2;
     let panel = Rect::new(x, y, panel_w, panel_h);
@@ -65,6 +65,10 @@ pub fn render_help(frame: &mut Frame) {
         Line::from(vec![
             Span::styled("    Sitting on couch  ", label),
             Span::styled("Resting in the lounge when idle", dim),
+        ]),
+        Line::from(vec![
+            Span::styled("    Using vending     ", label),
+            Span::styled("Grabbing a snack, arm wiggles", dim),
         ]),
         Line::from(""),
         Line::from(Span::styled("  Agent Types", heading)),
@@ -169,6 +173,38 @@ pub fn render_help(frame: &mut Frame) {
             Span::styled("    Quit", dim),
         ]),
         Line::from(vec![
+            Span::styled("    \u{2191}\u{2193}", label),
+            Span::styled(" / ", dim),
+            Span::styled("j k", label),
+            Span::styled("    Move cursor in activity panel", dim),
+        ]),
+        Line::from(vec![
+            Span::styled("    h", label),
+            Span::styled("          Collapse agent (from any child)", dim),
+        ]),
+        Line::from(vec![
+            Span::styled("    l", label),
+            Span::styled("          Expand agent tree", dim),
+        ]),
+        Line::from(vec![
+            Span::styled("    Enter", label),
+            Span::styled("      Toggle collapse/expand", dim),
+        ]),
+        Line::from(vec![
+            Span::styled("    d", label),
+            Span::styled(" / ", dim),
+            Span::styled("u", label),
+            Span::styled("        Page down / up", dim),
+        ]),
+        Line::from(vec![
+            Span::styled("    gg", label),
+            Span::styled("         Go to top of list", dim),
+        ]),
+        Line::from(vec![
+            Span::styled("    G", label),
+            Span::styled("          Go to bottom of list", dim),
+        ]),
+        Line::from(vec![
             Span::styled("    r", label),
             Span::styled("          Refresh agent list", dim),
         ]),
@@ -177,9 +213,17 @@ pub fn render_help(frame: &mut Frame) {
             Span::styled("          Toggle this help", dim),
         ]),
         Line::from(""),
-        Line::from(Span::styled("  Press ? or Esc to close", dim)),
+        Line::from(Span::styled("  j/k:scroll  ? or Esc:close", dim)),
     ];
 
-    let paragraph = Paragraph::new(lines).block(block);
+    // Clamp scroll so we don't scroll past content
+    let content_lines = lines.len() as u16;
+    let inner_height = panel_h.saturating_sub(2); // account for borders
+    let max_scroll = content_lines.saturating_sub(inner_height);
+    let effective_scroll = scroll.min(max_scroll);
+
+    let paragraph = Paragraph::new(lines)
+        .block(block)
+        .scroll((effective_scroll, 0));
     frame.render_widget(paragraph, panel);
 }

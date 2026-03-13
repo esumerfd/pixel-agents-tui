@@ -32,5 +32,11 @@ pub const LOUNGE_SIT_MAX_SEC: f64 = 45.0;
 // ── Rendering ───────────────────────────────────────────────
 pub const TICK_RATE_MS: u64 = 100; // 10 FPS render loop
 
+// ── Snack Bar Visit ────────────────────────────────────────
+pub const SNACK_BAR_VISIT_CHANCE: f64 = 0.3;
+pub const VENDING_USE_MIN_SEC: f64 = 4.0;
+pub const VENDING_USE_MAX_SEC: f64 = 10.0;
+pub const VENDING_FRAME_DURATION_SEC: f64 = 0.4;
+
 // ── Permission-exempt tools ─────────────────────────────────
 pub const PERMISSION_EXEMPT_TOOLS: &[&str] = &["Task", "Agent", "AskUserQuestion"];

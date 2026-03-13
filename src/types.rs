@@ -17,6 +17,7 @@ pub enum CharacterState {
     Walking,
     Idle,
     Sitting,
+    UsingVending,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -165,6 +166,7 @@ pub struct Character {
     pub status_text: String,
     pub is_subagent: bool,
     pub lounge_seat: Option<usize>,
+    pub vending_spot: Option<usize>,
 }
 
 impl Character {
@@ -194,6 +196,7 @@ impl Character {
             status_text: "Idle".to_string(),
             is_subagent: false,
             lounge_seat: None,
+            vending_spot: None,
         }
     }
 }

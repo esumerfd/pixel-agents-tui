@@ -49,6 +49,11 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), 
     let mut known_files: HashSet<PathBuf> = HashSet::new();
     let mut next_id: u32 = 1;
     let mut show_help = false;
+    let mut activity_scroll: u16 = 0;
+    let mut activity_cursor: u16 = 0;
+    let mut collapsed: HashSet<u32> = HashSet::new();
+    let mut pending_g = false;
+    let mut help_scroll: u16 = 0;
 
     // Initial scan for agents (to get count for desk layout)
     let initial_events = watcher::scan_for_agents(&mut known_files, &mut agents, &mut next_id);
@@ -81,8 +86,27 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), 
     let mut last_poll = Instant::now();
 
     loop {
+        // Auto-scroll to keep cursor visible
+        let list_len = renderer::build_activity_list(&agents, &collapsed).len() as u16;
+        let term_size = terminal.size()?;
+        let panel_visible = term_size.height.saturating_sub(5);
+        if list_len <= panel_visible {
+            activity_scroll = 0;
+        } else {
+            if activity_cursor < activity_scroll {
+                activity_scroll = activity_cursor;
+            }
+            if panel_visible > 0 && activity_cursor >= activity_scroll + panel_visible {
+                activity_scroll = activity_cursor - panel_visible + 1;
+            }
+        }
+        // Clamp cursor to list bounds
+        if list_len > 0 {
+            activity_cursor = activity_cursor.min(list_len - 1);
+        }
+
         terminal.draw(|frame| {
-            renderer::render(frame, &scene, &agents, show_help);
+            renderer::render(frame, &scene, &agents, show_help, help_scroll, activity_scroll, activity_cursor, &collapsed);
         })?;
 
         let timeout = tick_duration.saturating_sub(last_tick.elapsed());
@@ -90,18 +114,109 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), 
             match event::read()? {
                 Event::Key(key) if key.kind == KeyEventKind::Press => {
                     if show_help {
-                        // Any key closes help
                         match key.code {
                             KeyCode::Char('?') | KeyCode::Esc => show_help = false,
                             KeyCode::Char('q') | KeyCode::Char('Q') => return Ok(()),
+                            KeyCode::Up | KeyCode::Char('k') => {
+                                help_scroll = help_scroll.saturating_sub(1);
+                            }
+                            KeyCode::Down | KeyCode::Char('j') => {
+                                help_scroll += 1;
+                            }
+                            KeyCode::Char('u') => {
+                                let page = terminal.size()?.height.saturating_sub(8) / 2;
+                                help_scroll = help_scroll.saturating_sub(page);
+                            }
+                            KeyCode::Char('d') => {
+                                let page = terminal.size()?.height.saturating_sub(8) / 2;
+                                help_scroll += page;
+                            }
+                            KeyCode::Char('g') => {
+                                help_scroll = 0;
+                            }
+                            KeyCode::Char('G') => {
+                                help_scroll = u16::MAX;
+                            }
                             _ => show_help = false,
                         }
                     } else {
                         match key.code {
                             KeyCode::Char('q') | KeyCode::Char('Q') => return Ok(()),
                             KeyCode::Esc => return Ok(()),
-                            KeyCode::Char('?') => show_help = true,
+                            KeyCode::Char('?') => { show_help = true; help_scroll = 0; }
+                            KeyCode::Up | KeyCode::Char('k') => {
+                                pending_g = false;
+                                activity_cursor = activity_cursor.saturating_sub(1);
+                            }
+                            KeyCode::Down | KeyCode::Char('j') => {
+                                pending_g = false;
+                                let list = renderer::build_activity_list(&agents, &collapsed);
+                                let max = (list.len() as u16).saturating_sub(1);
+                                if activity_cursor < max {
+                                    activity_cursor += 1;
+                                }
+                            }
+                            KeyCode::Char('u') => {
+                                pending_g = false;
+                                let page = terminal.size()?.height.saturating_sub(8) / 2;
+                                activity_cursor = activity_cursor.saturating_sub(page);
+                            }
+                            KeyCode::Char('d') => {
+                                pending_g = false;
+                                let list = renderer::build_activity_list(&agents, &collapsed);
+                                let max = (list.len() as u16).saturating_sub(1);
+                                let page = terminal.size()?.height.saturating_sub(8) / 2;
+                                activity_cursor = (activity_cursor + page).min(max);
+                            }
+                            KeyCode::Char('g') => {
+                                if pending_g {
+                                    activity_cursor = 0;
+                                    pending_g = false;
+                                } else {
+                                    pending_g = true;
+                                }
+                            }
+                            KeyCode::Char('G') => {
+                                pending_g = false;
+                                let list = renderer::build_activity_list(&agents, &collapsed);
+                                activity_cursor = (list.len() as u16).saturating_sub(1);
+                            }
+                            KeyCode::Char('h') => {
+                                pending_g = false;
+                                let list = renderer::build_activity_list(&agents, &collapsed);
+                                if let Some(&id) = list.get(activity_cursor as usize) {
+                                    // Find the parent to collapse
+                                    let parent_id = agents.get(&id)
+                                        .and_then(|a| if a.is_subagent { a.parent_id } else { Some(id) });
+                                    if let Some(pid) = parent_id {
+                                        collapsed.insert(pid);
+                                    }
+                                }
+                            }
+                            KeyCode::Char('l') => {
+                                pending_g = false;
+                                let list = renderer::build_activity_list(&agents, &collapsed);
+                                if let Some(&id) = list.get(activity_cursor as usize) {
+                                    if !agents.get(&id).map_or(true, |a| a.is_subagent) {
+                                        collapsed.remove(&id);
+                                    }
+                                }
+                            }
+                            KeyCode::Enter => {
+                                pending_g = false;
+                                let list = renderer::build_activity_list(&agents, &collapsed);
+                                if let Some(&id) = list.get(activity_cursor as usize) {
+                                    if let Some(agent) = agents.get(&id) {
+                                        if !agent.is_subagent {
+                                            if !collapsed.remove(&id) {
+                                                collapsed.insert(id);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             KeyCode::Char('r') | KeyCode::Char('R') => {
+                                pending_g = false;
                                 let events = watcher::scan_for_agents(
                                     &mut known_files, &mut agents, &mut next_id,
                                 );
@@ -110,7 +225,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), 
                                     scene.ensure_character(id, &agents);
                                 }
                             }
-                            _ => {}
+                            _ => { pending_g = false; }
                         }
                     }
                 }

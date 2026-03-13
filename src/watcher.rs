@@ -307,8 +307,9 @@ pub fn scan_for_agents(
 ) -> Vec<AgentEvent> {
     let mut events = Vec::new();
 
-    // Track which project dirs are claimed by teams so the fallback scan skips them
+    // Track which project dirs and files are claimed by teams so the fallback scan skips them
     let mut team_claimed_files: HashSet<PathBuf> = HashSet::new();
+    let mut team_claimed_dirs: HashSet<PathBuf> = HashSet::new();
 
     // Phase 1: Team discovery
     // When multiple teams share the same lead session, keep only the most recent one
@@ -347,6 +348,9 @@ pub fn scan_for_agents(
         if !is_recent_file(&lead_jsonl) && !is_recent_team(team) {
             continue;
         }
+
+        // Claim this entire project directory — fallback scan should skip it
+        team_claimed_dirs.insert(project_dir.clone());
 
         // Create/find lead agent
         let lead_id;
@@ -456,11 +460,15 @@ pub fn scan_for_agents(
     let project_dirs = discover_project_dirs();
 
     for project_dir in &project_dirs {
+        // Skip entire project directories owned by a team
+        if team_claimed_dirs.contains(project_dir) {
+            continue;
+        }
+
         let jsonl_files = find_jsonl_files(project_dir);
 
         // Only take the most recent JSONL file per project directory
         if let Some(file) = jsonl_files.into_iter().next() {
-            // Skip files already claimed by team discovery
             if team_claimed_files.contains(&file) {
                 continue;
             }

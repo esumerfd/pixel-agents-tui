@@ -12,6 +12,7 @@ pub struct Scene {
     pub layout: OfficeLayout,
     walkable_tiles: Vec<(u16, u16)>,
     lounge_seat_occupied: Vec<bool>,
+    vending_spot_occupied: Vec<bool>,
     next_palette: u8,
     next_person: u8,
     next_seat: usize,
@@ -21,11 +22,13 @@ impl Scene {
     pub fn new(layout: OfficeLayout) -> Self {
         let walkable_tiles = pathfinding::get_walkable_tiles(&layout);
         let lounge_seat_count = layout.lounge_seats.len();
+        let vending_spot_count = layout.vending_spots.len();
         Self {
             characters: HashMap::new(),
             layout,
             walkable_tiles,
             lounge_seat_occupied: vec![false; lounge_seat_count],
+            vending_spot_occupied: vec![false; vending_spot_count],
             next_palette: 0,
             next_person: 0,
             next_seat: 0,
@@ -50,6 +53,31 @@ impl Scene {
                 self.lounge_seat_occupied[idx] = false;
             }
         }
+    }
+
+    /// Free a vending spot if the character is occupying one.
+    fn free_vending_spot(&mut self, ch: &mut Character) {
+        if let Some(idx) = ch.vending_spot.take() {
+            if idx < self.vending_spot_occupied.len() {
+                self.vending_spot_occupied[idx] = false;
+            }
+        }
+    }
+
+    /// Pick a random unoccupied vending spot.
+    fn pick_vending_spot(&self) -> Option<(usize, u16, u16)> {
+        let available: Vec<usize> = self.vending_spot_occupied.iter()
+            .enumerate()
+            .filter(|(_, occupied)| !*occupied)
+            .map(|(i, _)| i)
+            .collect();
+        if available.is_empty() {
+            return None;
+        }
+        let mut rng = rand::thread_rng();
+        let idx = available[rng.gen_range(0..available.len())];
+        let spot = &self.layout.vending_spots[idx];
+        Some((idx, spot.col, spot.row))
     }
 
     /// Pick a random unoccupied lounge seat.
@@ -147,11 +175,18 @@ impl Scene {
                         ch.current_tool = Some(tool_name.clone());
                         ch.status_text = status.clone();
 
-                        // Free lounge seat if sitting
+                        // Free lounge/vending spot if occupied
                         if ch.state == CharacterState::Sitting {
                             if let Some(idx) = ch.lounge_seat.take() {
                                 if idx < self.lounge_seat_occupied.len() {
                                     self.lounge_seat_occupied[idx] = false;
+                                }
+                            }
+                        }
+                        if ch.state == CharacterState::UsingVending {
+                            if let Some(idx) = ch.vending_spot.take() {
+                                if idx < self.vending_spot_occupied.len() {
+                                    self.vending_spot_occupied[idx] = false;
                                 }
                             }
                         }
@@ -180,11 +215,18 @@ impl Scene {
                             AgentStatus::Active => {
                                 ch.is_active = true;
 
-                                // Free lounge seat if sitting
+                                // Free lounge/vending spot if occupied
                                 if ch.state == CharacterState::Sitting {
                                     if let Some(idx) = ch.lounge_seat.take() {
                                         if idx < self.lounge_seat_occupied.len() {
                                             self.lounge_seat_occupied[idx] = false;
+                                        }
+                                    }
+                                }
+                                if ch.state == CharacterState::UsingVending {
+                                    if let Some(idx) = ch.vending_spot.take() {
+                                        if idx < self.vending_spot_occupied.len() {
+                                            self.vending_spot_occupied[idx] = false;
                                         }
                                     }
                                 }
@@ -287,6 +329,40 @@ impl Scene {
                     ch.wander_limit = random_int(WANDER_MOVES_BEFORE_REST_MIN, WANDER_MOVES_BEFORE_REST_MAX);
                 }
             }
+            CharacterState::UsingVending => {
+                // Arm wiggle animation at the vending machine
+                if ch.frame_timer >= VENDING_FRAME_DURATION_SEC {
+                    ch.frame_timer -= VENDING_FRAME_DURATION_SEC;
+                    ch.frame = (ch.frame + 1) % 2;
+                }
+                if ch.is_active {
+                    // Got work — leave the vending machine
+                    self.free_vending_spot(ch);
+                    let path = pathfinding::find_path(
+                        ch.col, ch.row, ch.seat_col, ch.seat_row, &self.layout,
+                    );
+                    if !path.is_empty() {
+                        ch.path = path;
+                        ch.state = CharacterState::Walking;
+                        ch.move_progress = 0.0;
+                    } else {
+                        ch.state = CharacterState::Typing;
+                        ch.dir = Direction::Up;
+                    }
+                    return;
+                }
+                ch.seat_timer -= dt;
+                if ch.seat_timer <= 0.0 {
+                    // Done at vending machine — go idle and wander
+                    self.free_vending_spot(ch);
+                    ch.state = CharacterState::Idle;
+                    ch.frame = 0;
+                    ch.frame_timer = 0.0;
+                    ch.wander_timer = random_range(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC);
+                    ch.wander_count = 0;
+                    ch.wander_limit = random_int(WANDER_MOVES_BEFORE_REST_MIN, WANDER_MOVES_BEFORE_REST_MAX);
+                }
+            }
             CharacterState::Idle => {
                 ch.frame = 0;
                 if ch.is_active {
@@ -308,9 +384,28 @@ impl Scene {
                 ch.wander_timer -= dt;
                 if ch.wander_timer <= 0.0 {
                     if ch.wander_count >= ch.wander_limit {
-                        // Try to sit in the lounge
                         let mut rng = rand::thread_rng();
-                        if rng.gen_bool(LOUNGE_SIT_CHANCE) {
+                        let roll: f64 = rng.gen_range(0.0..1.0);
+
+                        if roll < SNACK_BAR_VISIT_CHANCE {
+                            // Try to visit a vending machine in the snack bar
+                            if let Some((idx, col, row)) = self.pick_vending_spot() {
+                                let path = pathfinding::find_path(
+                                    ch.col, ch.row, col, row, &self.layout,
+                                );
+                                if !path.is_empty() {
+                                    self.vending_spot_occupied[idx] = true;
+                                    ch.vending_spot = Some(idx);
+                                    ch.path = path;
+                                    ch.state = CharacterState::Walking;
+                                    ch.move_progress = 0.0;
+                                    ch.wander_count = 0;
+                                    ch.wander_limit = random_int(WANDER_MOVES_BEFORE_REST_MIN, WANDER_MOVES_BEFORE_REST_MAX);
+                                    return;
+                                }
+                            }
+                        } else if roll < SNACK_BAR_VISIT_CHANCE + LOUNGE_SIT_CHANCE {
+                            // Try to sit in the lounge
                             if let Some((idx, col, row)) = self.pick_lounge_seat() {
                                 let path = pathfinding::find_path(
                                     ch.col, ch.row, col, row, &self.layout,
@@ -348,7 +443,7 @@ impl Scene {
                         let path = pathfinding::find_path(
                             ch.col, ch.row, target.0, target.1, &self.layout,
                         );
-                        if !path.is_empty() && path.len() < 30 {
+                        if !path.is_empty() && path.len() < 60 {
                             ch.path = path;
                             ch.state = CharacterState::Walking;
                             ch.move_progress = 0.0;
@@ -367,8 +462,12 @@ impl Scene {
                 ch.move_progress += WALK_SPEED_TILES_PER_SEC * dt;
 
                 if ch.path.is_empty() {
-                    // Arrived — check if at a lounge seat
-                    if ch.lounge_seat.is_some() {
+                    // Arrived — check destination type
+                    if ch.vending_spot.is_some() {
+                        ch.state = CharacterState::UsingVending;
+                        ch.dir = Direction::Up;
+                        ch.seat_timer = random_range(VENDING_USE_MIN_SEC, VENDING_USE_MAX_SEC);
+                    } else if ch.lounge_seat.is_some() {
                         ch.state = CharacterState::Sitting;
                         ch.dir = Direction::Down;
                         ch.seat_timer = random_range(LOUNGE_SIT_MIN_SEC, LOUNGE_SIT_MAX_SEC);
@@ -409,8 +508,9 @@ impl Scene {
 
                 // If became active while wandering, repath to seat
                 if ch.is_active {
-                    // Free lounge seat if heading there
+                    // Free lounge/vending spot if heading there
                     self.free_lounge_seat(ch);
+                    self.free_vending_spot(ch);
 
                     let last = ch.path.last().copied();
                     if last != Some((ch.seat_col, ch.seat_row)) {

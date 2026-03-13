@@ -73,12 +73,13 @@ pub fn find_path(
 
 /// Get all walkable tiles in the layout, excluding positions near edges
 /// where a character sprite would be clipped.
-/// A 5x5 sprite with row_offset=2 occupies rows [row-2, row+2] and cols [col-2, col+2].
+/// A 5x5 sprite centered on (col, row) occupies cols [col-2, col+2] and rows [row-2, row+2].
+/// We need margin of half_w+1 on each side to keep the sprite fully inside the grid.
 pub fn get_walkable_tiles(layout: &OfficeLayout) -> Vec<(u16, u16)> {
-    let sprite_margin_top: u16 = 2;
-    let sprite_margin_bottom: u16 = 2;
-    let sprite_margin_left: u16 = 2;
-    let sprite_margin_right: u16 = 2;
+    let sprite_margin_top: u16 = 3;
+    let sprite_margin_bottom: u16 = 3;
+    let sprite_margin_left: u16 = 3;
+    let sprite_margin_right: u16 = 3;
 
     let mut tiles = Vec::new();
     for row in 0..layout.rows {

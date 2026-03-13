@@ -81,6 +81,13 @@ pub struct LoungeSeat {
     pub row: u16,
 }
 
+/// A position in front of a vending machine where an agent can stand
+#[derive(Debug, Clone)]
+pub struct VendingSpot {
+    pub col: u16,
+    pub row: u16,
+}
+
 /// The complete office layout
 pub struct OfficeLayout {
     pub cols: u16,
@@ -89,6 +96,7 @@ pub struct OfficeLayout {
     pub furniture: Vec<Furniture>,
     pub seats: Vec<Seat>,
     pub lounge_seats: Vec<LoungeSeat>,
+    pub vending_spots: Vec<VendingSpot>,
     pub blocked: std::collections::HashSet<(u16, u16)>,
     pub room_labels: Vec<(u16, u16, &'static str)>,
 }
@@ -255,6 +263,16 @@ pub fn build_office(agent_count: usize) -> OfficeLayout {
         blocked.remove(&(ls.col, ls.row));
     }
 
+    // ── Vending spots (standing positions in front of vending machines) ──
+    // Vending machines at (54,1) and (60,1), size 4x3 → stand at row 4, centered col+2
+    let vending_spots = vec![
+        VendingSpot { col: 56, row: 4 },
+        VendingSpot { col: 62, row: 4 },
+    ];
+    for vs in &vending_spots {
+        blocked.remove(&(vs.col, vs.row));
+    }
+
     // ── Room labels ──
     let room_labels = vec![
         (18, 0, "WORK ROOM"),
@@ -269,6 +287,7 @@ pub fn build_office(agent_count: usize) -> OfficeLayout {
         furniture,
         seats,
         lounge_seats,
+        vending_spots,
         blocked,
         room_labels,
     }

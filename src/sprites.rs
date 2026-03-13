@@ -56,6 +56,7 @@ pub fn get_character_grid(ch: &Character) -> Vec<Vec<SpriteCell>> {
         CharacterState::Walking => walking_sprite(ch.frame, skin, hair, shirt, pants, shoes, EYES),
         CharacterState::Idle => idle_sprite(skin, hair, shirt, pants, shoes, EYES),
         CharacterState::Sitting => sitting_sprite(skin, hair, shirt, EYES, pants),
+        CharacterState::UsingVending => vending_use_sprite(ch.frame, skin, hair, shirt, pants, shoes, EYES),
     }
 }
 
@@ -128,6 +129,20 @@ fn idle_sprite(skin: Color, hair: Color, shirt: Color, pants: Color, shoes: Colo
     ]
 }
 
+/// Facing up at vending machine, right arm reaching up and wiggling between frames.
+fn vending_use_sprite(frame: u8, _skin: Color, hair: Color, shirt: Color, pants: Color, shoes: Color, _eyes: Color) -> Vec<Vec<SpriteCell>> {
+    let f = frame % 2;
+    vec![
+        //       0              1              2              3              4
+        vec![ empty(),      c('\u{2584}', hair), c('\u{2584}', hair), c('\u{2584}', hair),
+              if f == 0 { c('\u{2571}', shirt) } else { c('\u{257D}', shirt) } ], // hair + raised arm
+        vec![ empty(),      c('\u{2588}', hair), c('\u{2588}', hair), c('\u{2588}', hair), empty()       ], // back of head
+        vec![ empty(),      c('\u{2588}', shirt), c('\u{2588}', shirt), c('\u{2588}', shirt), empty()       ], // torso (back)
+        vec![ empty(),      c('\u{2588}', pants), empty(),              c('\u{2588}', pants), empty()       ], // legs
+        vec![ empty(),      c('\u{2584}', shoes), empty(),              c('\u{2584}', shoes), empty()       ], // feet
+    ]
+}
+
 fn sitting_sprite(skin: Color, hair: Color, shirt: Color, eyes: Color, _pants: Color) -> Vec<Vec<SpriteCell>> {
     vec![
         vec![ empty(),      c('\u{2584}', hair), c('\u{2584}', hair), c('\u{2584}', hair), empty()       ],
@@ -185,6 +200,16 @@ pub fn get_subagent_grid(ch: &Character) -> Vec<Vec<SpriteCell>> {
                 vec![ empty(), c('\u{2584}', hair), empty() ],
                 vec![ empty(), cb('\u{25CF}', e, skin), empty() ],
                 vec![ empty(), c('\u{2588}', shirt), empty() ],
+            ]
+        }
+        CharacterState::UsingVending => {
+            let f = ch.frame % 2;
+            vec![
+                vec![ empty(), c('\u{2584}', hair),
+                      if f == 0 { c('\u{2571}', shirt) } else { c('\u{257D}', shirt) } ],
+                vec![ empty(), c('\u{2588}', hair), empty() ],
+                vec![ empty(), c('\u{2588}', shirt), empty() ],
+                vec![ empty(), c('\u{2588}', pants), empty() ],
             ]
         }
     }
