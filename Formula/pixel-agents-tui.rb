@@ -2,22 +2,22 @@
 class PixelAgentsTui < Formula
   desc "Terminal UI visualizing Claude Code agents as animated pixel characters"
   homepage "https://github.com/esumerfd/pixel-agents-tui"
-  version "0.3.0"
+  version "0.4.0"
 
   on_macos do
     on_arm do
-      url "https://github.com/esumerfd/pixel-agents-tui/releases/download/v0.3.0/pixel-agents-tui-v0.3.0-aarch64-apple-darwin.tar.gz"
-      sha256 "acc9ca33a12800a503d6cc4b45b0fbe83d4f72b7376f21abefabeba3dce8a9be"
+      url "https://github.com/esumerfd/pixel-agents-tui/releases/download/v0.4.0/pixel-agents-tui-v0.4.0-aarch64-apple-darwin.tar.gz"
+      sha256 "5719d86b58c330ac13a2fdf7842c373317a7671e903531355ea2bb4695256504"
     end
     on_intel do
-      url "https://github.com/esumerfd/pixel-agents-tui/releases/download/v0.3.0/pixel-agents-tui-v0.3.0-x86_64-apple-darwin.tar.gz"
-      sha256 "23e71e75b8650e3a78192842f8c65ba4c040769e60ba440c2ed278b2decc7f9f"
+      url "https://github.com/esumerfd/pixel-agents-tui/releases/download/v0.4.0/pixel-agents-tui-v0.4.0-x86_64-apple-darwin.tar.gz"
+      sha256 "9098f976ef39f5e15f9c123ff1d32b679d042824912d3b6278d182cecfcd6e8e"
     end
   end
 
   on_linux do
-    url "https://github.com/esumerfd/pixel-agents-tui/releases/download/v0.3.0/pixel-agents-tui-v0.3.0-x86_64-unknown-linux-gnu.tar.gz"
-    sha256 "4dc248468e6617d7097f9d2dcf65470e206b0ce80ffbd9b20c5c847d74566039"
+    url "https://github.com/esumerfd/pixel-agents-tui/releases/download/v0.4.0/pixel-agents-tui-v0.4.0-x86_64-unknown-linux-gnu.tar.gz"
+    sha256 "4a180d2d76459f00dfe5478d5c1dc2f3071ae178377afde470aa45efa551786d"
   end
 
   def install
