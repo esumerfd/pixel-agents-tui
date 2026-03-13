@@ -71,12 +71,26 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), 
         scene.ensure_character(id, &agents);
     }
 
-    // Read existing content from all agent files to get current state
+    // Read existing content from all agent files to get current state.
+    // For stale files (not modified recently), skip to end to avoid replaying old history.
     let agent_ids: Vec<u32> = agents.keys().copied().collect();
     for id in agent_ids {
         if let Some(agent) = agents.get_mut(&id) {
-            let events = watcher::read_new_lines(agent);
-            scene.handle_events(&events, &agents);
+            let is_stale = std::fs::metadata(&agent.jsonl_file)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|mtime| mtime.elapsed().ok())
+                .is_some_and(|age| age.as_secs() >= STALE_ACTIVE_TIMEOUT_SECS);
+
+            if is_stale {
+                // Skip to end — file is old, don't replay history
+                if let Ok(meta) = std::fs::metadata(&agent.jsonl_file) {
+                    agent.file_offset = meta.len();
+                }
+            } else {
+                let events = watcher::read_new_lines(agent);
+                scene.handle_events(&events, &agents);
+            }
         }
     }
 
@@ -256,10 +270,22 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), 
 
             let stale_ids: Vec<u32> = agents
                 .iter()
-                .filter(|(_, a)| !a.jsonl_file.exists())
+                .filter(|(_, a)| {
+                    // Remove if file was deleted
+                    if !a.jsonl_file.exists() {
+                        return true;
+                    }
+                    // Remove if file hasn't been modified for STALE_AGENT_REMOVE_SECS
+                    std::fs::metadata(&a.jsonl_file)
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|mtime| mtime.elapsed().ok())
+                        .is_some_and(|age| age.as_secs() >= STALE_AGENT_REMOVE_SECS)
+                })
                 .map(|(id, _)| *id)
                 .collect();
             for id in stale_ids {
+                known_files.remove(&agents[&id].jsonl_file);
                 agents.remove(&id);
                 scene.characters.remove(&id);
             }

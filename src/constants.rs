@@ -5,6 +5,8 @@ pub const FILE_POLL_INTERVAL_MS: u64 = 1000;
 pub const TOOL_DONE_DELAY_MS: u64 = 300;
 pub const PERMISSION_TIMER_DELAY_MS: u64 = 7000;
 pub const TEXT_IDLE_DELAY_MS: u64 = 5000;
+pub const STALE_ACTIVE_TIMEOUT_SECS: u64 = 30;
+pub const STALE_AGENT_REMOVE_SECS: u64 = 300; // remove agents with no activity for 5 minutes
 
 // ── Display Truncation ──────────────────────────────────────
 pub const BASH_COMMAND_DISPLAY_MAX_LENGTH: usize = 30;

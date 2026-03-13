@@ -307,9 +307,8 @@ pub fn scan_for_agents(
 ) -> Vec<AgentEvent> {
     let mut events = Vec::new();
 
-    // Track which project dirs and files are claimed by teams so the fallback scan skips them
+    // Track which JSONL files are claimed by teams so the fallback scan skips them
     let mut team_claimed_files: HashSet<PathBuf> = HashSet::new();
-    let mut team_claimed_dirs: HashSet<PathBuf> = HashSet::new();
 
     // Phase 1: Team discovery
     // When multiple teams share the same lead session, keep only the most recent one
@@ -349,8 +348,9 @@ pub fn scan_for_agents(
             continue;
         }
 
-        // Claim this entire project directory — fallback scan should skip it
-        team_claimed_dirs.insert(project_dir.clone());
+        // Claim the lead's JSONL file (not the entire directory — other
+        // standalone sessions in the same project dir should still be discovered)
+        team_claimed_files.insert(lead_jsonl.clone());
 
         // Create/find lead agent
         let lead_id;
@@ -408,14 +408,29 @@ pub fn scan_for_agents(
 
         for member in &non_lead_members {
             // Check if we already have an agent for this member
-            let already_exists = agents.values().any(|a| {
-                a.team_name.as_deref() == Some(&team.name)
-                    && a.member_name.as_deref() == Some(&member.name)
-            });
-            if already_exists {
+            let existing_id = agents.iter()
+                .find(|(_, a)| {
+                    a.team_name.as_deref() == Some(&team.name)
+                        && a.member_name.as_deref() == Some(&member.name)
+                })
+                .map(|(id, _)| *id);
+
+            if let Some(eid) = existing_id {
                 // Mark their file as team-claimed
-                if let Some(path) = best_per_member.get(&member.name) {
-                    team_claimed_files.insert(path.clone());
+                if let Some(best_path) = best_per_member.get(&member.name) {
+                    team_claimed_files.insert(best_path.clone());
+
+                    // If a newer JSONL file exists for this member, switch to it
+                    if let Some(agent) = agents.get_mut(&eid) {
+                        if agent.jsonl_file != *best_path {
+                            known_files.insert(best_path.clone());
+                            agent.jsonl_file = best_path.clone();
+                            agent.file_offset = 0;
+                            agent.line_buffer.clear();
+                            agent.clear_activity();
+                            events.push(AgentEvent::ClearActivity { agent_id: eid });
+                        }
+                    }
                 }
                 continue;
             }
@@ -460,19 +475,10 @@ pub fn scan_for_agents(
     let project_dirs = discover_project_dirs();
 
     for project_dir in &project_dirs {
-        // Skip entire project directories owned by a team
-        if team_claimed_dirs.contains(project_dir) {
-            continue;
-        }
-
         let jsonl_files = find_jsonl_files(project_dir);
 
-        // Only take the most recent JSONL file per project directory
-        if let Some(file) = jsonl_files.into_iter().next() {
-            if team_claimed_files.contains(&file) {
-                continue;
-            }
-
+        // Take the most recent JSONL file that isn't claimed by a team
+        if let Some(file) = jsonl_files.into_iter().find(|f| !team_claimed_files.contains(f)) {
             let parent_id;
 
             if known_files.contains(&file) {
@@ -592,6 +598,8 @@ pub fn read_new_lines(agent: &mut AgentState) -> Vec<AgentEvent> {
 }
 
 /// Poll all agents for new data.
+/// Also detects stale agents that are still marked Active but whose JSONL
+/// file hasn't been modified recently — these are transitioned to Idle.
 pub fn poll_agents(agents: &mut HashMap<u32, AgentState>) -> Vec<AgentEvent> {
     let ids: Vec<u32> = agents.keys().copied().collect();
     let mut all_events = Vec::new();
@@ -599,7 +607,31 @@ pub fn poll_agents(agents: &mut HashMap<u32, AgentState>) -> Vec<AgentEvent> {
     for id in ids {
         if let Some(agent) = agents.get_mut(&id) {
             let events = read_new_lines(agent);
+            let had_new_data = !events.is_empty();
             all_events.extend(events);
+
+            // If the agent is Active but hasn't received new JSONL data,
+            // check file modification time to detect stopped sessions
+            if !had_new_data && agent.status == AgentStatus::Active {
+                let is_stale = fs::metadata(&agent.jsonl_file)
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|mtime| mtime.elapsed().ok())
+                    .is_some_and(|age| age.as_secs() >= crate::constants::STALE_ACTIVE_TIMEOUT_SECS);
+
+                if is_stale {
+                    agent.active_tool_ids.clear();
+                    agent.active_tool_statuses.clear();
+                    agent.active_tool_names.clear();
+                    agent.had_tools_in_turn = false;
+                    agent.status = AgentStatus::Idle;
+
+                    all_events.push(AgentEvent::StatusChange {
+                        agent_id: agent.id,
+                        status: AgentStatus::Idle,
+                    });
+                }
+            }
         }
     }
 
