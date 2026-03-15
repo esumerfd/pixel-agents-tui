@@ -177,9 +177,9 @@ fn render_furniture(frame: &mut Frame, area: Rect, kind: FurnitureKind, col: u16
 
 fn render_character(frame: &mut Frame, area: Rect, ch: &Character, scene: &Scene) {
     let (grid, half_w, row_offset) = if ch.is_subagent {
-        (sprites::get_subagent_grid(ch), sprites::SUBAGENT_WIDTH / 2, 2u16)
+        (sprites::get_subagent_grid(ch), sprites::SUBAGENT_WIDTH / 2, 4u16)
     } else {
-        (sprites::get_character_grid(ch), sprites::CHARACTER_WIDTH / 2, 2u16)
+        (sprites::get_character_grid(ch), sprites::CHARACTER_WIDTH / 2, 4u16)
     };
     let base_col = ch.col.saturating_sub(half_w);
 
