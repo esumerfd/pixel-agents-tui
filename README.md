@@ -84,6 +84,11 @@ pixel-agents-tui
 - Rust 2024 edition
 - A terminal with 256-color support
 
+## Ideas
+
+- Experiment with monitoring activity using hooks instead of polling files. See [agent-paperclip](https://github.com/fredruss/agent-paperclip) as an example.
+- Can Rust generate an alternate hover UI like Clippy? Hum....
+
 ## Inspiration
 
 Inspired by [pixel-agents](https://github.com/pablodelucca/pixel-agents), a VS Code extension by Pablo De Lucca that visualizes AI agents as pixel-art characters in an animated office scene.
