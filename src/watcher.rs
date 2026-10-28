@@ -287,12 +287,40 @@ fn find_subagent_files(project_dir: &Path) -> Vec<PathBuf> {
     files
 }
 
+/// Time since the agent last wrote anything: its own JSONL, or any subagent
+/// JSONL under `<session>/subagents/`. A session waiting on a subagent writes
+/// nothing to its own file, so its own mtime alone makes it look stale.
+pub fn last_activity_age(jsonl: &Path) -> Option<std::time::Duration> {
+    let mut latest = fs::metadata(jsonl).and_then(|m| m.modified()).ok()?;
+
+    if let Some(stem) = jsonl.file_stem() {
+        let subagents_dir = jsonl.with_file_name(stem).join("subagents");
+        if let Ok(entries) = fs::read_dir(&subagents_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                    continue;
+                }
+                if let Ok(mtime) = fs::metadata(&path).and_then(|m| m.modified()) {
+                    latest = latest.max(mtime);
+                }
+            }
+        }
+    }
+
+    latest.elapsed().ok()
+}
+
+/// Should the agent be dropped from the display?
+/// Uses the same window as discovery, so an agent the scan adds is never
+/// removed on the next poll.
+pub fn is_stale_agent(jsonl: &Path) -> bool {
+    !is_recent_file(jsonl)
+}
+
 fn is_recent_file(path: &Path) -> bool {
-    fs::metadata(path)
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|mtime| mtime.elapsed().ok())
-        .is_some_and(|age| age.as_secs() < 7200)
+    last_activity_age(path)
+        .is_some_and(|age| age.as_secs() < crate::constants::STALE_AGENT_REMOVE_SECS)
 }
 
 // ── Main Scanner ───────────────────────────────────────────────
@@ -613,10 +641,7 @@ pub fn poll_agents(agents: &mut HashMap<u32, AgentState>) -> Vec<AgentEvent> {
             // If the agent is Active but hasn't received new JSONL data,
             // check file modification time to detect stopped sessions
             if !had_new_data && agent.status == AgentStatus::Active {
-                let is_stale = fs::metadata(&agent.jsonl_file)
-                    .and_then(|m| m.modified())
-                    .ok()
-                    .and_then(|mtime| mtime.elapsed().ok())
+                let is_stale = last_activity_age(&agent.jsonl_file)
                     .is_some_and(|age| age.as_secs() >= crate::constants::STALE_ACTIVE_TIMEOUT_SECS);
 
                 if is_stale {
@@ -636,4 +661,58 @@ pub fn poll_agents(agents: &mut HashMap<u32, AgentState>) -> Vec<AgentEvent> {
     }
 
     all_events
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, SystemTime};
+
+    fn scratch_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("pixel-agents-{}-{}", name, std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn write_aged(path: &Path, age: Duration) {
+        fs::write(path, "{}\n").unwrap();
+        let file = fs::File::options().write(true).open(path).unwrap();
+        file.set_modified(SystemTime::now() - age).unwrap();
+    }
+
+    #[test]
+    fn last_activity_age_counts_recent_subagent_writes() {
+        let dir = scratch_dir("subagent-activity");
+        let parent = dir.join("session.jsonl");
+        write_aged(&parent, Duration::from_secs(600));
+        let subagents = dir.join("session").join("subagents");
+        fs::create_dir_all(&subagents).unwrap();
+        write_aged(&subagents.join("agent-a.jsonl"), Duration::from_secs(5));
+
+        let age = last_activity_age(&parent).unwrap();
+
+        assert!(age < Duration::from_secs(60), "expected subagent write to count, got {:?}", age);
+    }
+
+    #[test]
+    fn session_found_by_scan_is_not_removed_as_stale() {
+        let dir = scratch_dir("found-not-stale");
+        let session = dir.join("session.jsonl");
+        write_aged(&session, Duration::from_secs(600));
+
+        assert!(is_recent_file(&session), "scan should discover a 10 minute old session");
+        assert!(!is_stale_agent(&session), "a session the scan discovers must not be removed as stale");
+    }
+
+    #[test]
+    fn last_activity_age_is_own_age_without_subagents() {
+        let dir = scratch_dir("no-subagents");
+        let parent = dir.join("session.jsonl");
+        write_aged(&parent, Duration::from_secs(600));
+
+        let age = last_activity_age(&parent).unwrap();
+
+        assert!(age >= Duration::from_secs(590), "got {:?}", age);
+    }
 }

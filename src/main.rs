@@ -275,12 +275,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), 
                     if !a.jsonl_file.exists() {
                         return true;
                     }
-                    // Remove if file hasn't been modified for STALE_AGENT_REMOVE_SECS
-                    std::fs::metadata(&a.jsonl_file)
-                        .and_then(|m| m.modified())
-                        .ok()
-                        .and_then(|mtime| mtime.elapsed().ok())
-                        .is_some_and(|age| age.as_secs() >= STALE_AGENT_REMOVE_SECS)
+                    watcher::is_stale_agent(&a.jsonl_file)
                 })
                 .map(|(id, _)| *id)
                 .collect();
