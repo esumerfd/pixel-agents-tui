@@ -318,6 +318,54 @@ pub fn is_stale_agent(jsonl: &Path) -> bool {
     !is_recent_file(jsonl)
 }
 
+/// Claude Code marks a subagent done by setting `finished: true` in the
+/// `<agent>.meta.json` beside its JSONL.
+pub fn is_finished_subagent(jsonl: &Path) -> bool {
+    let meta_path = jsonl.with_extension("meta.json");
+    fs::read_to_string(meta_path)
+        .ok()
+        .and_then(|data| serde_json::from_str::<serde_json::Value>(&data).ok())
+        .and_then(|json| json.get("finished").and_then(|v| v.as_bool()))
+        .unwrap_or(false)
+}
+
+/// Should the agent be dropped from the display? Team members are kept even
+/// when finished, since the team scan would only re-add them.
+pub fn should_remove_agent(agent: &AgentState) -> bool {
+    if !agent.jsonl_file.exists() || is_stale_agent(&agent.jsonl_file) {
+        return true;
+    }
+    agent.is_subagent && agent.member_name.is_none() && is_finished_subagent(&agent.jsonl_file)
+}
+
+/// Read only the last `max_bytes` of the agent's JSONL, enough to rebuild its
+/// current state without replaying a long history.
+pub fn read_tail(agent: &mut AgentState, max_bytes: u64) -> Vec<AgentEvent> {
+    use std::io::{BufRead, Seek};
+
+    let Ok(meta) = fs::metadata(&agent.jsonl_file) else {
+        return Vec::new();
+    };
+    let start = meta.len().saturating_sub(max_bytes);
+    if start > 0 {
+        // Begin one byte early and skip through the first newline: that drops the
+        // partial line, and nothing at all when the cut lands on a line boundary.
+        let Ok(mut file) = fs::File::open(&agent.jsonl_file) else {
+            return Vec::new();
+        };
+        if file.seek(std::io::SeekFrom::Start(start - 1)).is_err() {
+            return Vec::new();
+        }
+        let mut partial = Vec::new();
+        if std::io::BufReader::new(file).read_until(b'\n', &mut partial).is_err() {
+            return Vec::new();
+        }
+        agent.file_offset = start - 1 + partial.len() as u64;
+        agent.line_buffer.clear();
+    }
+    read_new_lines(agent)
+}
+
 fn is_recent_file(path: &Path) -> bool {
     last_activity_age(path)
         .is_some_and(|age| age.as_secs() < crate::constants::STALE_AGENT_REMOVE_SECS)
@@ -547,7 +595,7 @@ pub fn scan_for_agents(
                     if known_files.contains(&sub_file) || team_claimed_files.contains(&sub_file) {
                         continue;
                     }
-                    if !is_recent_file(&sub_file) {
+                    if !is_recent_file(&sub_file) || is_finished_subagent(&sub_file) {
                         continue;
                     }
                     known_files.insert(sub_file.clone());
@@ -641,8 +689,14 @@ pub fn poll_agents(agents: &mut HashMap<u32, AgentState>) -> Vec<AgentEvent> {
             // If the agent is Active but hasn't received new JSONL data,
             // check file modification time to detect stopped sessions
             if !had_new_data && agent.status == AgentStatus::Active {
-                let is_stale = last_activity_age(&agent.jsonl_file)
-                    .is_some_and(|age| age.as_secs() >= crate::constants::STALE_ACTIVE_TIMEOUT_SECS);
+                // A subagent blocked in a long tool call writes nothing until the
+                // tool returns; while it is unfinished its open call is still running.
+                let waiting_on_tool = agent.is_subagent
+                    && !agent.active_tool_ids.is_empty()
+                    && !is_finished_subagent(&agent.jsonl_file);
+                let is_stale = !waiting_on_tool
+                    && last_activity_age(&agent.jsonl_file)
+                        .is_some_and(|age| age.as_secs() >= crate::constants::STALE_ACTIVE_TIMEOUT_SECS);
 
                 if is_stale {
                     agent.active_tool_ids.clear();
@@ -703,6 +757,94 @@ mod tests {
 
         assert!(is_recent_file(&session), "scan should discover a 10 minute old session");
         assert!(!is_stale_agent(&session), "a session the scan discovers must not be removed as stale");
+    }
+
+    const OPEN_BASH: &str = r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"sleep 600"}}]}}"#;
+
+    fn write_subagent(dir: &Path, lines: &[&str], meta: &str, age: Duration) -> PathBuf {
+        let jsonl = dir.join("agent-a.jsonl");
+        fs::write(&jsonl, lines.join("\n") + "\n").unwrap();
+        fs::File::options().write(true).open(&jsonl).unwrap()
+            .set_modified(SystemTime::now() - age).unwrap();
+        fs::write(dir.join("agent-a.meta.json"), meta).unwrap();
+        jsonl
+    }
+
+    fn subagent_state(jsonl: &Path) -> AgentState {
+        AgentState::new_subagent(2, jsonl.parent().unwrap().to_path_buf(), jsonl.to_path_buf(), None, 1)
+    }
+
+    #[test]
+    fn subagent_is_finished_when_meta_says_so() {
+        let dir = scratch_dir("meta-finished");
+        let jsonl = write_subagent(&dir, &[OPEN_BASH], r#"{"agentType":"x","finished":true}"#, Duration::ZERO);
+
+        assert!(is_finished_subagent(&jsonl));
+    }
+
+    #[test]
+    fn subagent_is_not_finished_without_the_flag() {
+        let dir = scratch_dir("meta-running");
+        let jsonl = write_subagent(&dir, &[OPEN_BASH], r#"{"agentType":"x"}"#, Duration::ZERO);
+
+        assert!(!is_finished_subagent(&jsonl));
+    }
+
+    #[test]
+    fn finished_subagent_is_removed() {
+        let dir = scratch_dir("remove-finished");
+        let jsonl = write_subagent(&dir, &[OPEN_BASH], r#"{"agentType":"x","finished":true}"#, Duration::ZERO);
+
+        assert!(should_remove_agent(&subagent_state(&jsonl)));
+    }
+
+    #[test]
+    fn running_subagent_is_kept() {
+        let dir = scratch_dir("keep-running");
+        let jsonl = write_subagent(&dir, &[OPEN_BASH], r#"{"agentType":"x"}"#, Duration::ZERO);
+
+        assert!(!should_remove_agent(&subagent_state(&jsonl)));
+    }
+
+    #[test]
+    fn subagent_waiting_on_a_long_tool_stays_active() {
+        let dir = scratch_dir("long-tool");
+        let jsonl = write_subagent(&dir, &[OPEN_BASH], r#"{"agentType":"x"}"#, Duration::from_secs(600));
+        let mut agents = HashMap::new();
+        let mut agent = subagent_state(&jsonl);
+        read_new_lines(&mut agent);
+        agents.insert(agent.id, agent);
+
+        poll_agents(&mut agents);
+
+        assert_eq!(agents[&2].status, AgentStatus::Active);
+        assert_eq!(agents[&2].current_status_text(), "Running: sleep 600");
+    }
+
+    #[test]
+    fn read_tail_recovers_an_open_tool_from_an_old_file() {
+        let dir = scratch_dir("tail-open-tool");
+        let filler = format!(r#"{{"type":"user","message":{{"content":"{}"}}}}"#, "x".repeat(5000));
+        let jsonl = write_subagent(&dir, &[&filler, &filler, OPEN_BASH], r#"{"agentType":"x"}"#, Duration::from_secs(600));
+        let mut agent = subagent_state(&jsonl);
+
+        read_tail(&mut agent, 6000);
+
+        assert_eq!(agent.status, AgentStatus::Active);
+        assert_eq!(agent.current_status_text(), "Running: sleep 600");
+        assert_eq!(agent.file_offset, fs::metadata(&jsonl).unwrap().len());
+    }
+
+    #[test]
+    fn read_tail_sees_a_tool_that_already_finished() {
+        let dir = scratch_dir("tail-closed-tool");
+        let result = r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}"#;
+        let jsonl = write_subagent(&dir, &[OPEN_BASH, result], r#"{"agentType":"x"}"#, Duration::from_secs(600));
+        let mut agent = subagent_state(&jsonl);
+
+        read_tail(&mut agent, 64 * 1024);
+
+        assert!(agent.active_tool_ids.is_empty());
     }
 
     #[test]

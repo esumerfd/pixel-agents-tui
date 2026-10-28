@@ -7,6 +7,7 @@ pub const PERMISSION_TIMER_DELAY_MS: u64 = 7000;
 pub const TEXT_IDLE_DELAY_MS: u64 = 5000;
 pub const STALE_ACTIVE_TIMEOUT_SECS: u64 = 30;
 pub const STALE_AGENT_REMOVE_SECS: u64 = 7200; // discover and keep agents active within 2 hours
+pub const TAIL_REPLAY_BYTES: u64 = 256 * 1024; // startup read of a stale transcript
 
 // ── Display Truncation ──────────────────────────────────────
 pub const BASH_COMMAND_DISPLAY_MAX_LENGTH: usize = 30;

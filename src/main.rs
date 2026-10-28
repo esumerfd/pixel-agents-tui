@@ -72,7 +72,8 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), 
     }
 
     // Read existing content from all agent files to get current state.
-    // For stale files (not modified recently), skip to end to avoid replaying old history.
+    // For stale files (not modified recently), read only the tail: enough to see
+    // a tool call still running without replaying old history.
     let agent_ids: Vec<u32> = agents.keys().copied().collect();
     for id in agent_ids {
         if let Some(agent) = agents.get_mut(&id) {
@@ -82,15 +83,12 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), 
                 .and_then(|mtime| mtime.elapsed().ok())
                 .is_some_and(|age| age.as_secs() >= STALE_ACTIVE_TIMEOUT_SECS);
 
-            if is_stale {
-                // Skip to end — file is old, don't replay history
-                if let Ok(meta) = std::fs::metadata(&agent.jsonl_file) {
-                    agent.file_offset = meta.len();
-                }
+            let events = if is_stale {
+                watcher::read_tail(agent, TAIL_REPLAY_BYTES)
             } else {
-                let events = watcher::read_new_lines(agent);
-                scene.handle_events(&events, &agents);
-            }
+                watcher::read_new_lines(agent)
+            };
+            scene.handle_events(&events, &agents);
         }
     }
 
@@ -270,13 +268,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), 
 
             let stale_ids: Vec<u32> = agents
                 .iter()
-                .filter(|(_, a)| {
-                    // Remove if file was deleted
-                    if !a.jsonl_file.exists() {
-                        return true;
-                    }
-                    watcher::is_stale_agent(&a.jsonl_file)
-                })
+                .filter(|(_, a)| watcher::should_remove_agent(a))
                 .map(|(id, _)| *id)
                 .collect();
             for id in stale_ids {
